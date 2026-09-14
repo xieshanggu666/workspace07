@@ -387,7 +387,16 @@ function svgPos(svg,e){
 }
 function setGrid(){
   const w=+document.getElementById('gridW').value, h=+document.getElementById('gridH').value;
-  if(w>=5&&w<=60&&h>=5&&h<=60){ state.settings.gridW=w; state.settings.gridH=h; save(); renderAll(); }
+  if(w>=5&&w<=60&&h>=5&&h<=60){
+    state.settings.gridW=w; state.settings.gridH=h;
+    // 缩小网格后，把越界的地块收进地图内（先限尺寸，再限位置）
+    for(const z of state.zones){
+      z.w=Math.min(z.w,w); z.h=Math.min(z.h,h);
+      z.x=Math.max(0,Math.min(z.x,w-z.w));
+      z.y=Math.max(0,Math.min(z.y,h-z.h));
+    }
+    save(); renderAll();
+  }
 }
 function renderZoneEdit(){
   const box = document.getElementById('zoneEditForm');
@@ -407,7 +416,15 @@ function renderZoneEdit(){
 }
 function updZone(id,k,v){
   const z=zoneById(id); if(!z) return;
-  if(['x','y','w','h'].includes(k)) v=Math.max(k==='w'||k==='h'?1:0, Math.min(v|0, state.settings[k==='x'||k==='w'?'gridW':'gridH']));
+  if(['x','y','w','h'].includes(k)){
+    v = v|0;
+    const {gridW,gridH} = state.settings;
+    // 钳制范围时同时考虑地块自身尺寸，保证 x+w ≤ 网格宽、y+h ≤ 网格高
+    if(k==='x') v = Math.max(0, Math.min(v, gridW - z.w));
+    if(k==='y') v = Math.max(0, Math.min(v, gridH - z.h));
+    if(k==='w') v = Math.max(1, Math.min(v, gridW - z.x));
+    if(k==='h') v = Math.max(1, Math.min(v, gridH - z.y));
+  }
   z[k]=v; save(); renderAll();
 }
 function delZone(id){
