@@ -1,0 +1,705 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>社区菜园轮作规划工具</title>
+<style>
+  :root{
+    --green:#2e7d32; --green-l:#e8f5e9; --amber:#f9a825; --red:#c62828;
+    --ink:#263238; --muted:#78909c; --line:#dfe5e8; --bg:#f5f7f5; --card:#fff;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:"PingFang SC","Microsoft YaHei",system-ui,sans-serif;background:var(--bg);color:var(--ink);font-size:14px}
+  header{background:var(--green);color:#fff;padding:12px 20px;display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+  header h1{font-size:18px;margin:0;font-weight:600}
+  header .sp{flex:1}
+  nav{background:#fff;border-bottom:1px solid var(--line);display:flex;padding:0 12px;flex-wrap:wrap}
+  nav button{border:none;background:none;padding:12px 18px;font-size:14px;cursor:pointer;color:var(--muted);border-bottom:3px solid transparent}
+  nav button.on{color:var(--green);border-bottom-color:var(--green);font-weight:600}
+  main{padding:18px 20px;max-width:1280px;margin:0 auto}
+  section.tab{display:none}
+  section.tab.on{display:block}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:14px 16px;margin-bottom:16px}
+  .card h3{margin:0 0 10px;font-size:15px}
+  .hint{color:var(--muted);font-size:12px;margin:4px 0 10px}
+  button.btn{background:var(--green);color:#fff;border:none;border-radius:6px;padding:7px 14px;cursor:pointer;font-size:13px}
+  button.btn.ghost{background:#fff;color:var(--green);border:1px solid var(--green)}
+  button.btn.gray{background:#eceff1;color:var(--ink)}
+  button.btn.sm{padding:3px 9px;font-size:12px}
+  button.btn.danger{background:#fff;color:var(--red);border:1px solid var(--red)}
+  input,select,textarea{border:1px solid var(--line);border-radius:5px;padding:6px 8px;font-size:13px;font-family:inherit}
+  label.fl{display:inline-flex;flex-direction:column;font-size:12px;color:var(--muted);gap:3px;margin:0 10px 8px 0}
+  table{border-collapse:collapse;width:100%;font-size:13px}
+  th,td{border:1px solid var(--line);padding:6px 8px;text-align:left;vertical-align:top}
+  th{background:#f0f4f0;font-weight:600;white-space:nowrap}
+  .badge{display:inline-block;border-radius:10px;padding:1px 9px;font-size:12px;margin:1px 2px}
+  .b-warn{background:#fff8e1;color:#8d6e00;border:1px solid #ffe082}
+  .b-err{background:#ffebee;color:var(--red);border:1px solid #ef9a9a}
+  .b-good{background:var(--green-l);color:var(--green);border:1px solid #a5d6a7}
+  .b-info{background:#e3f2fd;color:#1565c0;border:1px solid #90caf9}
+  .b-exc{background:#eceff1;color:#546e7a;border:1px solid #b0bec5}
+  .warnrow{border-left:4px solid var(--amber);background:#fffdf5;padding:8px 10px;margin:6px 0;border-radius:0 6px 6px 0}
+  .warnrow.err{border-left-color:var(--red);background:#fff8f8}
+  .warnrow.good{border-left-color:var(--green);background:#f8fff8}
+  .warnrow.info{border-left-color:#1e88e5;background:#f7fbff}
+  .excbox{margin-top:6px;font-size:12px}
+  .excbox input{width:260px}
+  .muted{color:var(--muted)}
+  .svgwrap{overflow-x:auto;border:1px solid var(--line);border-radius:6px;background:#fff}
+  svg text{user-select:none}
+  .zone-rect{cursor:pointer;stroke:#455a64;stroke-width:1.2}
+  .zone-rect.sel{stroke:#ff6f00;stroke-width:3}
+  .gridline{stroke:#eceff1;stroke-width:1}
+  .flex{display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start}
+  .col{flex:1;min-width:300px}
+  .tag{font-size:11px;color:#fff;border-radius:3px;padding:0 5px;margin-right:4px;display:inline-block}
+  .weekhead{background:var(--green-l);font-weight:600}
+  .logline{font-size:12px;color:var(--muted)}
+  @media print{
+    header,nav,.noprint{display:none!important}
+    section.tab{display:block!important}
+    main{max-width:none}
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>🌱 社区菜园轮作规划工具</h1>
+  <span class="sp"></span>
+  <span class="noprint">
+    <button class="btn ghost" style="background:rgba(255,255,255,.15);color:#fff;border-color:#fff" onclick="loadSample()">载入示例数据</button>
+    <button class="btn ghost" style="background:rgba(255,255,255,.15);color:#fff;border-color:#fff" onclick="exportJSON()">导出备份</button>
+    <button class="btn ghost" style="background:rgba(255,255,255,.15);color:#fff;border-color:#fff" onclick="document.getElementById('impFile').click()">导入</button>
+    <input type="file" id="impFile" accept=".json" style="display:none" onchange="importJSON(this)">
+    <button class="btn ghost" style="background:rgba(255,255,255,.15);color:#fff;border-color:#fff" onclick="window.print()">打印输出</button>
+    <button class="btn ghost" style="background:rgba(255,255,255,.15);color:#fff;border-color:#fff" onclick="clearAll()">清空</button>
+  </span>
+</header>
+<nav class="noprint">
+  <button data-tab="zones" class="on" onclick="showTab('zones')">① 种植区绘制</button>
+  <button data-tab="history" onclick="showTab('history')">② 历史种植记录</button>
+  <button data-tab="plans" onclick="showTab('plans')">③ 下一季种植计划</button>
+  <button data-tab="output" onclick="showTab('output')">④ 成果输出</button>
+</nav>
+<main>
+
+<!-- ============ 1. 种植区 ============ -->
+<section id="tab-zones" class="tab on">
+  <div class="card">
+    <h3>菜园地块图 <span class="muted" style="font-weight:400;font-size:12px">（每格 = 1m × 1m）</span></h3>
+    <div class="noprint" style="margin-bottom:8px">
+      <label><input type="checkbox" id="drawMode"> 绘制模式：在网格上按住拖动，画出新种植区</label>
+      &nbsp;&nbsp;
+      <label class="fl" style="flex-direction:row;align-items:center;gap:4px">网格宽(m)
+        <input type="number" id="gridW" style="width:60px" onchange="setGrid()"></label>
+      <label class="fl" style="flex-direction:row;align-items:center;gap:4px">网格高(m)
+        <input type="number" id="gridH" style="width:60px" onchange="setGrid()"></label>
+    </div>
+    <div class="svgwrap" id="zoneMapWrap"></div>
+  </div>
+  <div class="flex">
+    <div class="card col noprint" id="zoneEditCard">
+      <h3>种植区属性</h3>
+      <div class="hint">在地图上点击某个种植区进行编辑；或开启绘制模式拖出新区域。</div>
+      <div id="zoneEditForm"><span class="muted">未选中任何种植区</span></div>
+    </div>
+    <div class="card col">
+      <h3>种植区一览</h3>
+      <div id="zoneList"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 2. 历史记录 ============ -->
+<section id="tab-history" class="tab">
+  <div class="card noprint">
+    <h3>登记历史种植记录</h3>
+    <div class="hint">记录每个种植区往年/上一季种过的作物、施肥方式与病虫害发生情况，这是轮作检查的依据。</div>
+    <div id="histForm"></div>
+  </div>
+  <div class="card">
+    <h3>历史记录表</h3>
+    <div id="histList"></div>
+  </div>
+</section>
+
+<!-- ============ 3. 种植计划 ============ -->
+<section id="tab-plans" class="tab">
+  <div class="card">
+    <h3>本季设置</h3>
+    <label class="fl">季节名称 <input type="text" id="seasonName" style="width:120px" onchange="setSetting('seasonName',this.value)"></label>
+    <label class="fl">计划开始日期 <input type="date" id="seasonStart" onchange="setSetting('seasonStart',this.value)"></label>
+  </div>
+  <div class="card noprint">
+    <h3>新增种植安排</h3>
+    <div class="hint">选择种植区、作物和播种/育苗开始日期，系统会自动推算育苗、移栽、采收各阶段时间。</div>
+    <div id="planForm"></div>
+  </div>
+  <div class="card">
+    <h3>计划与规则检查</h3>
+    <div class="hint">系统根据 <b>作物科属（连作障碍）</b>、<b>前茬影响</b>、<b>病虫害历史</b>、<b>日照/土壤匹配</b>、<b>相邻区域限制</b>、<b>时间冲突</b> 自动提示。确需种植的，可填写例外原因留档。日期可因天气或人员情况整体调整。</div>
+    <div id="planList"></div>
+  </div>
+</section>
+
+<!-- ============ 4. 成果输出 ============ -->
+<section id="tab-output" class="tab">
+  <div class="card">
+    <h3>🗺️ 分区种植图 <span class="muted" id="seasonLabel"></span></h3>
+    <div class="svgwrap" id="planMapWrap"></div>
+    <div id="planLegend" style="margin-top:8px"></div>
+  </div>
+  <div class="card">
+    <h3>📅 每周田间任务</h3>
+    <div id="weeklyTasks"></div>
+  </div>
+  <div class="card">
+    <h3>🧺 种子采购清单</h3>
+    <div class="hint">用种量按种植面积 × 经验用种量 × 1.15 损耗系数估算，请结合品种说明调整。采购截止 = 最早播种/育苗日期前 14 天。</div>
+    <div id="seedList"></div>
+  </div>
+</section>
+
+</main>
+
+<script>
+/* ==================== 作物数据库 ====================
+ * nursery: 育苗天数（0 = 直播，无移栽阶段）
+ * grow:    移栽/播种 → 开始采收的天数
+ * harvest: 采收持续天数
+ * sun:     full 全日照 / partial 半日照 / any 耐荫
+ * rate/unit: 每平方米用种量
+ * prevGood/prevBad: 前茬科属或作物名
+ * neighborBad: 不宜相邻种植的作物名
+ */
+const CROPS = [
+ {id:'tomato', name:'番茄',   family:'茄科',   sun:'full',    nursery:35, grow:75,  harvest:40, rate:0.6, unit:'粒', prevGood:['豆科','葱科'], prevBad:['茄科'], neighborBad:['黄瓜'], soilBad:[], color:'#e57373'},
+ {id:'eggplant',name:'茄子',  family:'茄科',   sun:'full',    nursery:40, grow:70,  harvest:45, rate:0.5, unit:'粒', prevGood:['豆科'], prevBad:['茄科'], neighborBad:[], soilBad:[], color:'#9575cd'},
+ {id:'pepper', name:'辣椒',   family:'茄科',   sun:'full',    nursery:45, grow:70,  harvest:50, rate:0.5, unit:'粒', prevGood:['豆科','葱科'], prevBad:['茄科'], neighborBad:[], soilBad:[], color:'#ef5350'},
+ {id:'potato', name:'土豆',   family:'茄科',   sun:'partial', nursery:0,  grow:90,  harvest:10, rate:3,   unit:'块', prevGood:['豆科','禾本科'], prevBad:['茄科'], neighborBad:['番茄'], soilBad:['黏土'], color:'#a1887f'},
+ {id:'cuke',   name:'黄瓜',   family:'葫芦科', sun:'full',    nursery:25, grow:40,  harvest:40, rate:1,   unit:'粒', prevGood:['豆科'], prevBad:['葫芦科'], neighborBad:['番茄'], soilBad:[], color:'#9ccc65'},
+ {id:'pumpkin',name:'南瓜',   family:'葫芦科', sun:'full',    nursery:0,  grow:80,  harvest:30, rate:0.3, unit:'粒', prevGood:['豆科'], prevBad:['葫芦科'], neighborBad:[], soilBad:[], color:'#ffb74d'},
+ {id:'zucchini',name:'西葫芦',family:'葫芦科', sun:'full',    nursery:20, grow:45,  harvest:40, rate:0.4, unit:'粒', prevGood:['豆科'], prevBad:['葫芦科'], neighborBad:[], soilBad:[], color:'#aed581'},
+ {id:'cabchina',name:'大白菜',family:'十字花科',sun:'partial',nursery:25, grow:60,  harvest:15, rate:0.4, unit:'克', prevGood:['豆科','茄科'], prevBad:['十字花科'], neighborBad:[], soilBad:[], color:'#c5e1a5'},
+ {id:'radish', name:'萝卜',   family:'十字花科',sun:'any',    nursery:0,  grow:55,  harvest:20, rate:0.8, unit:'克', prevGood:['豆科'], prevBad:['十字花科'], neighborBad:[], soilBad:['黏土'], color:'#f48fb1'},
+ {id:'cabbage',name:'甘蓝',   family:'十字花科',sun:'partial',nursery:30, grow:75,  harvest:20, rate:0.3, unit:'克', prevGood:['豆科'], prevBad:['十字花科'], neighborBad:[], soilBad:[], color:'#80cbc4'},
+ {id:'lettuce',name:'生菜',   family:'菊科',   sun:'partial', nursery:20, grow:35,  harvest:25, rate:0.3, unit:'克', prevGood:['豆科','葫芦科'], prevBad:[], neighborBad:[], soilBad:[], color:'#a5d6a7'},
+ {id:'spinach',name:'菠菜',   family:'藜科',   sun:'any',     nursery:0,  grow:40,  harvest:25, rate:2,   unit:'克', prevGood:['豆科'], prevBad:[], neighborBad:[], soilBad:[], color:'#66bb6a'},
+ {id:'bean',   name:'豆角',   family:'豆科',   sun:'full',    nursery:0,  grow:50,  harvest:35, rate:4,   unit:'粒', prevGood:['十字花科','茄科'], prevBad:['豆科'], neighborBad:['洋葱','大蒜','韭菜'], soilBad:[], color:'#7cb342'},
+ {id:'pea',    name:'豌豆',   family:'豆科',   sun:'partial', nursery:0,  grow:65,  harvest:25, rate:5,   unit:'粒', prevGood:['十字花科'], prevBad:['豆科'], neighborBad:['洋葱','大蒜'], soilBad:[], color:'#4db6ac'},
+ {id:'corn',   name:'玉米',   family:'禾本科', sun:'full',    nursery:0,  grow:85,  harvest:20, rate:1.5, unit:'粒', prevGood:['豆科'], prevBad:[], neighborBad:[], soilBad:[], color:'#fff176'},
+ {id:'chive',  name:'韭菜',   family:'葱科',   sun:'any',     nursery:60, grow:60,  harvest:60, rate:1,   unit:'克', prevGood:[], prevBad:['葱科'], neighborBad:['豆角','豌豆'], soilBad:[], color:'#26a69a'},
+ {id:'onion',  name:'洋葱',   family:'葱科',   sun:'full',    nursery:50, grow:90,  harvest:10, rate:0.5, unit:'克', prevGood:['葫芦科'], prevBad:['葱科'], neighborBad:['豆角','豌豆'], soilBad:[], color:'#ba68c8'},
+ {id:'garlic', name:'大蒜',   family:'葱科',   sun:'full',    nursery:0,  grow:150, harvest:10, rate:6,   unit:'瓣', prevGood:['葫芦科','豆科'], prevBad:['葱科'], neighborBad:['豆角','豌豆'], soilBad:[], color:'#b39ddb'},
+ {id:'carrot', name:'胡萝卜', family:'伞形科', sun:'any',     nursery:0,  grow:80,  harvest:25, rate:1.2, unit:'克', prevGood:['豆科','葱科'], prevBad:['伞形科'], neighborBad:[], soilBad:['黏土'], color:'#ff8a65'},
+ {id:'celery', name:'芹菜',   family:'伞形科', sun:'partial', nursery:50, grow:70,  harvest:30, rate:0.2, unit:'克', prevGood:['豆科'], prevBad:['伞形科'], neighborBad:[], soilBad:[], color:'#81c784'},
+];
+const SUNS = ['全日照','半日照','荫蔽'];
+const SOILS = ['壤土','沙壤土','沙土','黏土'];
+const FERTS = ['堆肥/农家肥','商品有机肥','化肥(复合肥)','绿肥','未施肥'];
+const PEST_LV = ['无','轻度','中度','重度'];
+const PESTS = ['无','蚜虫','菜青虫','霜霉病','白粉病','根结线虫','软腐病','其他'];
+const SEASONS = ['春','夏','秋','冬'];
+const CELL = 30; // 每格像素
+
+/* ==================== 状态与持久化 ==================== */
+function defaultState(){
+  return { settings:{seasonName:'秋季', seasonStart:'2026-09-15', gridW:24, gridH:14},
+           zones:[], history:[], plans:[] };
+}
+let state;
+try{ state = JSON.parse(localStorage.getItem('crp_state')) || defaultState(); }
+catch(e){ state = defaultState(); }
+let ui = { selectedZone:null, drawing:null };
+
+function save(){ localStorage.setItem('crp_state', JSON.stringify(state)); }
+function uid(){ return 'id'+Date.now().toString(36)+Math.random().toString(36).slice(2,6); }
+function cropById(id){ return CROPS.find(c=>c.id===id); }
+function zoneById(id){ return state.zones.find(z=>z.id===id); }
+function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g, m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
+
+/* ==================== 日期工具 ==================== */
+function d(s){ return new Date(s+'T00:00:00'); }
+function iso(dt){ const p=n=>String(n).padStart(2,'0'); return dt.getFullYear()+'-'+p(dt.getMonth()+1)+'-'+p(dt.getDate()); }
+function addD(dt,n){ const t=new Date(dt); t.setDate(t.getDate()+n); return t; }
+function fmtC(dt){ return (dt.getMonth()+1)+'月'+dt.getDate()+'日'; }
+function monday(dt){ const t=new Date(dt); const day=(t.getDay()+6)%7; t.setDate(t.getDate()-day); return t; }
+function isoWeek(dt){
+  const t=new Date(Date.UTC(dt.getFullYear(),dt.getMonth(),dt.getDate()));
+  const day=(t.getUTCDay()+6)%7; t.setUTCDate(t.getUTCDate()-day+3);
+  const first=new Date(Date.UTC(t.getUTCFullYear(),0,4));
+  const fd=(first.getUTCDay()+6)%7; first.setUTCDate(first.getUTCDate()-fd+3);
+  return t.getUTCFullYear()+'-W'+String(1+Math.round((t-first)/(7*864e5))).padStart(2,'0');
+}
+
+/* ==================== 阶段推算 ==================== */
+function stagesOf(plan){
+  const c = cropById(plan.cropId); if(!c) return null;
+  const sow = d(plan.sowDate);
+  if(c.nursery > 0){
+    const tp = addD(sow, c.nursery);
+    const hs = addD(tp, c.grow);
+    return { direct:false, sow, tp, hs, he:addD(hs, c.harvest) };
+  }
+  const hs = addD(sow, c.grow);
+  return { direct:true, sow, tp:null, hs, he:addD(hs, c.harvest) };
+}
+function occupyStart(plan){ const s=stagesOf(plan); return s.direct ? s.sow : s.tp; }
+function overlap(a1,a2,b1,b2){ return a1<=b2 && b1<=a2; }
+
+/* ==================== 规则引擎 ==================== */
+function checkPlan(plan){
+  const out = [];
+  const c = cropById(plan.cropId), z = zoneById(plan.zoneId);
+  if(!c || !z) return out;
+  const st = stagesOf(plan);
+  const push = (level,key,msg)=>out.push({level,key,msg});
+
+  // —— 历史：取该区的最近记录
+  const hist = state.history.filter(h=>h.zoneId===plan.zoneId)
+    .sort((a,b)=> b.year-a.year || SEASONS.indexOf(b.season)-SEASONS.indexOf(a.season));
+  const last = hist[0];
+  if(last){
+    const lc = cropById(last.cropId);
+    if(lc){
+      if(lc.family===c.family)
+        push('warn','R1',`连作障碍：本区上一季（${last.year}年${last.season}季）种植${lc.name}，与${c.name}同属${lc.family}，土传病害与养分失衡风险高`);
+      if(c.prevBad.includes(lc.family) && lc.family!==c.family)
+        push('warn','R2',`前茬不佳：${lc.name}（${lc.family}）不是${c.name}的理想前茬`);
+      if(c.prevGood.includes(lc.family)||c.prevGood.includes(lc.name))
+        push('good','G1',`前茬良好：上季${lc.name}（${lc.family}）有利于${c.name}生长`);
+      if((last.pestLevel==='中度'||last.pestLevel==='重度') && lc.family===c.family)
+        push('warn','R3',`病虫害风险：上季${lc.name}发生${last.pestLevel}${last.pest==='无'?'病虫害':last.pest}，同科种植易复发`);
+    }
+    if(last.fertilizer==='未施肥')
+      push('info','I1','上季未施肥，建议整地时增施有机肥');
+  }else{
+    push('info','I0','本区暂无历史记录，建议补录以便轮作判断');
+  }
+
+  // —— 日照 / 土壤
+  if(c.sun==='full' && z.sun==='荫蔽') push('warn','R4',`日照不足：${c.name}喜全日照，本区为荫蔽地`);
+  else if(c.sun==='full' && z.sun==='半日照') push('info','R4',`${c.name}喜全日照，半日照条件下产量可能下降`);
+  if(c.soilBad.includes(z.soil)) push('warn','R4b',`土壤不适：${c.name}不宜种在${z.soil}（易畸形/烂根），建议改良或换区`);
+
+  // —— 同区时间冲突
+  for(const p2 of state.plans){
+    if(p2.id===plan.id || p2.zoneId!==plan.zoneId) continue;
+    const s2 = stagesOf(p2); if(!s2) continue;
+    if(overlap(occupyStart(plan), st.he, occupyStart(p2), s2.he)){
+      const c2 = cropById(p2.cropId);
+      push('err','R6:'+p2.id,`时间冲突：与本区 ${c2?c2.name:'?'}（${iso(occupyStart(p2))} ~ ${iso(s2.he)}）占地时间重叠`);
+    }
+  }
+
+  // —— 相邻区域限制
+  for(const z2 of state.zones){
+    if(z2.id===z.id || !adjacent(z,z2)) continue;
+    for(const p2 of state.plans){
+      if(p2.zoneId!==z2.id || p2.id===plan.id) continue;
+      const c2 = cropById(p2.cropId); const s2 = stagesOf(p2);
+      if(!c2 || !s2) continue;
+      if(!overlap(occupyStart(plan), st.he, occupyStart(p2), s2.he)) continue;
+      if(c.neighborBad.includes(c2.name) || c2.neighborBad.includes(c.name))
+        push('warn','R5:'+p2.id,`相邻禁忌：${c.name} 与邻区「${z2.name}」的 ${c2.name} 不宜同期相邻种植`);
+    }
+  }
+  return out;
+}
+function adjacent(a,b){
+  const xTouch = (a.x+a.w===b.x || b.x+b.w===a.x) && a.y < b.y+b.h && b.y < a.y+a.h;
+  const yTouch = (a.y+a.h===b.y || b.y+b.h===a.y) && a.x < b.x+b.w && b.x < a.x+a.w;
+  return xTouch || yTouch;
+}
+
+/* ==================== 渲染：Tab 切换 ==================== */
+function showTab(name){
+  document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on', b.dataset.tab===name));
+  document.querySelectorAll('section.tab').forEach(s=>s.classList.toggle('on', s.id==='tab-'+name));
+  renderAll();
+}
+
+/* ==================== 种植区 ==================== */
+function zoneSVG(inner, w, h){
+  let grid='';
+  for(let x=0;x<=w;x++) grid+=`<line class="gridline" x1="${x*CELL}" y1="0" x2="${x*CELL}" y2="${h*CELL}"/>`;
+  for(let y=0;y<=h;y++) grid+=`<line class="gridline" x1="0" y1="${y*CELL}" x2="${w*CELL}" y2="${y*CELL}"/>`;
+  return `<svg id="zoneSvg" width="${w*CELL+1}" height="${h*CELL+1}" style="display:block">${grid}${inner}</svg>`;
+}
+function renderZoneMap(){
+  const {gridW,gridH} = state.settings;
+  let inner='';
+  for(const z of state.zones){
+    const plan = state.plans.find(p=>p.zoneId===z.id);
+    const c = plan && cropById(plan.cropId);
+    const fill = c ? c.color : '#eceff1';
+    inner += `<rect class="zone-rect ${ui.selectedZone===z.id?'sel':''}" data-zid="${z.id}"
+      x="${z.x*CELL+1}" y="${z.y*CELL+1}" width="${z.w*CELL-2}" height="${z.h*CELL-2}" fill="${fill}" fill-opacity="0.55" rx="4"/>
+      <text x="${z.x*CELL+6}" y="${z.y*CELL+16}" font-size="12" font-weight="600">${esc(z.name)}</text>
+      <text x="${z.x*CELL+6}" y="${z.y*CELL+30}" font-size="10" fill="#546e7a">${z.w*z.h}㎡ · ${z.sun} · ${z.soil}</text>`;
+    if(c) inner += `<text x="${z.x*CELL+6}" y="${z.y*CELL+46}" font-size="12" font-weight="600" fill="#1b5e20">${esc(c.name)}</text>`;
+  }
+  if(ui.drawing){
+    const r=ui.drawing;
+    inner += `<rect x="${r.x*CELL}" y="${r.y*CELL}" width="${r.w*CELL}" height="${r.h*CELL}" fill="#2e7d32" fill-opacity="0.25" stroke="#2e7d32" stroke-dasharray="4"/>`;
+  }
+  const wrap = document.getElementById('zoneMapWrap');
+  wrap.innerHTML = zoneSVG(inner, gridW, gridH);
+  bindMapEvents(wrap.querySelector('svg'));
+}
+function bindMapEvents(svg){
+  if(!svg) return;
+  svg.addEventListener('mousedown', e=>{
+    const draw = document.getElementById('drawMode');
+    if(draw && draw.checked){
+      const pt = svgPos(svg,e);
+      ui.drawing = {x0:pt.x, y0:pt.y, x:pt.x, y:pt.y, w:1, h:1};
+      renderZoneMap();
+      e.preventDefault();
+    }
+  });
+  svg.addEventListener('mousemove', e=>{
+    if(!ui.drawing) return;
+    const pt = svgPos(svg,e);
+    const r = ui.drawing;
+    r.x = Math.min(r.x0, pt.x); r.y = Math.min(r.y0, pt.y);
+    r.w = Math.abs(pt.x-r.x0)+1; r.h = Math.abs(pt.y-r.y0)+1;
+    renderZoneMap();
+  });
+  svg.addEventListener('mouseup', e=>{
+    if(ui.drawing){
+      const r = ui.drawing; ui.drawing=null;
+      const dm = document.getElementById('drawMode'); if(dm) dm.checked=false;
+      const z = {id:uid(), name:'新区'+(state.zones.length+1), x:r.x, y:r.y, w:r.w, h:r.h, sun:'全日照', soil:'壤土'};
+      state.zones.push(z); ui.selectedZone=z.id; save(); renderAll();
+    }
+  });
+  svg.addEventListener('click', e=>{
+    const t = e.target.closest('.zone-rect');
+    if(t){ ui.selectedZone = t.dataset.zid; renderAll(); }
+  });
+}
+function svgPos(svg,e){
+  const r = svg.getBoundingClientRect();
+  return { x:Math.max(0,Math.min(state.settings.gridW-1, Math.floor((e.clientX-r.left)/CELL))),
+           y:Math.max(0,Math.min(state.settings.gridH-1, Math.floor((e.clientY-r.top)/CELL))) };
+}
+function setGrid(){
+  const w=+document.getElementById('gridW').value, h=+document.getElementById('gridH').value;
+  if(w>=5&&w<=60&&h>=5&&h<=60){ state.settings.gridW=w; state.settings.gridH=h; save(); renderAll(); }
+}
+function renderZoneEdit(){
+  const box = document.getElementById('zoneEditForm');
+  const z = zoneById(ui.selectedZone);
+  if(!z){ box.innerHTML='<span class="muted">未选中任何种植区</span>'; return; }
+  box.innerHTML = `
+    <label class="fl">名称 <input value="${esc(z.name)}" onchange="updZone('${z.id}','name',this.value)"></label>
+    <label class="fl">日照 <select onchange="updZone('${z.id}','sun',this.value)">${SUNS.map(s=>`<option ${s===z.sun?'selected':''}>${s}</option>`).join('')}</select></label>
+    <label class="fl">土壤 <select onchange="updZone('${z.id}','soil',this.value)">${SOILS.map(s=>`<option ${s===z.soil?'selected':''}>${s}</option>`).join('')}</select></label>
+    <br>
+    <label class="fl">X(格) <input type="number" style="width:64px" value="${z.x}" onchange="updZone('${z.id}','x',+this.value)"></label>
+    <label class="fl">Y(格) <input type="number" style="width:64px" value="${z.y}" onchange="updZone('${z.id}','y',+this.value)"></label>
+    <label class="fl">宽(m) <input type="number" style="width:64px" value="${z.w}" onchange="updZone('${z.id}','w',+this.value)"></label>
+    <label class="fl">高(m) <input type="number" style="width:64px" value="${z.h}" onchange="updZone('${z.id}','h',+this.value)"></label>
+    <div style="margin-top:6px">面积：<b>${z.w*z.h} ㎡</b></div>
+    <div style="margin-top:10px"><button class="btn danger sm" onclick="delZone('${z.id}')">删除此种植区</button></div>`;
+}
+function updZone(id,k,v){
+  const z=zoneById(id); if(!z) return;
+  if(['x','y','w','h'].includes(k)) v=Math.max(k==='w'||k==='h'?1:0, Math.min(v|0, state.settings[k==='x'||k==='w'?'gridW':'gridH']));
+  z[k]=v; save(); renderAll();
+}
+function delZone(id){
+  if(!confirm('删除该种植区？其历史记录与计划将一并删除。')) return;
+  state.zones = state.zones.filter(z=>z.id!==id);
+  state.history = state.history.filter(h=>h.zoneId!==id);
+  state.plans = state.plans.filter(p=>p.zoneId!==id);
+  ui.selectedZone=null; save(); renderAll();
+}
+function renderZoneList(){
+  const el = document.getElementById('zoneList');
+  if(!state.zones.length){ el.innerHTML='<span class="muted">尚未绘制种植区。勾选「绘制模式」在地图上拖出第一块地。</span>'; return; }
+  el.innerHTML = '<table><tr><th>名称</th><th>面积</th><th>日照</th><th>土壤</th><th>位置</th></tr>' +
+    state.zones.map(z=>`<tr style="cursor:pointer" onclick="ui.selectedZone='${z.id}';renderAll()">
+      <td>${esc(z.name)}</td><td>${z.w*z.h}㎡</td><td>${z.sun}</td><td>${z.soil}</td><td>(${z.x},${z.y}) ${z.w}×${z.h}</td></tr>`).join('') + '</table>';
+}
+
+/* ==================== 历史记录 ==================== */
+function renderHistForm(){
+  const zopts = state.zones.map(z=>`<option value="${z.id}">${esc(z.name)}</option>`).join('');
+  const copts = CROPS.map(c=>`<option value="${c.id}">${c.name}（${c.family}）</option>`).join('');
+  document.getElementById('histForm').innerHTML = `
+    <label class="fl">种植区 <select id="hZone">${zopts||'<option value="">（请先绘制种植区）</option>'}</select></label>
+    <label class="fl">年份 <input type="number" id="hYear" value="${new Date().getFullYear()}" style="width:80px"></label>
+    <label class="fl">季节 <select id="hSeason">${SEASONS.map(s=>`<option>${s}</option>`).join('')}</select></label>
+    <label class="fl">作物 <select id="hCrop">${copts}</select></label>
+    <label class="fl">施肥方式 <select id="hFert">${FERTS.map(s=>`<option>${s}</option>`).join('')}</select></label>
+    <label class="fl">病虫害程度 <select id="hPestLv">${PEST_LV.map(s=>`<option>${s}</option>`).join('')}</select></label>
+    <label class="fl">主要病虫害 <select id="hPest">${PESTS.map(s=>`<option>${s}</option>`).join('')}</select></label>
+    <div><button class="btn" onclick="addHist()">＋ 添加记录</button></div>`;
+}
+function addHist(){
+  const zoneId=document.getElementById('hZone').value;
+  if(!zoneId){ alert('请先在「种植区绘制」中创建种植区'); return; }
+  state.history.push({ id:uid(), zoneId, year:+document.getElementById('hYear').value,
+    season:document.getElementById('hSeason').value, cropId:document.getElementById('hCrop').value,
+    fertilizer:document.getElementById('hFert').value,
+    pestLevel:document.getElementById('hPestLv').value, pest:document.getElementById('hPest').value });
+  save(); renderAll();
+}
+function delHist(id){ state.history=state.history.filter(h=>h.id!==id); save(); renderAll(); }
+function renderHistList(){
+  const el=document.getElementById('histList');
+  if(!state.history.length){ el.innerHTML='<span class="muted">暂无记录</span>'; return; }
+  const rows=[...state.history].sort((a,b)=> b.year-a.year || SEASONS.indexOf(b.season)-SEASONS.indexOf(a.season));
+  el.innerHTML='<table><tr><th>年份</th><th>季节</th><th>种植区</th><th>作物（科属）</th><th>施肥</th><th>病虫害</th><th class="noprint"></th></tr>'+
+    rows.map(h=>{
+      const z=zoneById(h.zoneId), c=cropById(h.cropId);
+      return `<tr><td>${h.year}</td><td>${h.season}</td><td>${z?esc(z.name):'（已删除）'}</td>
+        <td>${c?c.name+'（'+c.family+'）':'?'}</td><td>${h.fertilizer}</td>
+        <td>${h.pestLevel==='无'?'无':h.pestLevel+' · '+h.pest}</td>
+        <td class="noprint"><button class="btn danger sm" onclick="delHist('${h.id}')">删</button></td></tr>`;
+    }).join('')+'</table>';
+}
+
+/* ==================== 种植计划 ==================== */
+function setSetting(k,v){ state.settings[k]=v; save(); renderAll(); }
+function renderPlanForm(){
+  const zopts = state.zones.map(z=>`<option value="${z.id}">${esc(z.name)}（${z.w*z.h}㎡）</option>`).join('');
+  const copts = CROPS.map(c=>`<option value="${c.id}">${c.name}（${c.family}，${c.nursery>0?'育苗移栽':'直播'}）</option>`).join('');
+  document.getElementById('planForm').innerHTML = `
+    <label class="fl">种植区 <select id="pZone">${zopts||'<option value="">（请先绘制种植区）</option>'}</select></label>
+    <label class="fl">作物 <select id="pCrop">${copts}</select></label>
+    <label class="fl">播种/育苗开始日期 <input type="date" id="pDate" value="${state.settings.seasonStart}"></label>
+    <div><button class="btn" onclick="addPlan()">＋ 加入计划并检查</button></div>`;
+}
+function addPlan(){
+  const zoneId=document.getElementById('pZone').value;
+  const date=document.getElementById('pDate').value;
+  if(!zoneId){ alert('请先绘制种植区'); return; }
+  if(!date){ alert('请选择日期'); return; }
+  state.plans.push({ id:uid(), zoneId, cropId:document.getElementById('pCrop').value,
+    sowDate:date, exceptions:{}, log:[] });
+  save(); renderAll();
+}
+function delPlan(id){ state.plans=state.plans.filter(p=>p.id!==id); save(); renderAll(); }
+function shiftPlan(id){
+  const days=+document.getElementById('sh-'+id).value;
+  const reason=document.getElementById('rs-'+id).value;
+  if(!days){ alert('请输入调整天数（正数顺延，负数提前）'); return; }
+  const p=state.plans.find(x=>x.id===id); if(!p) return;
+  p.sowDate = iso(addD(d(p.sowDate), days));
+  p.log.push({when:iso(new Date()), days, reason});
+  save(); renderAll();
+}
+function saveExc(planId,key){
+  const inp=document.getElementById('exc-'+planId+'-'+key.replace(/[:]/g,'_'));
+  const p=state.plans.find(x=>x.id===planId); if(!p) return;
+  p.exceptions[key]=inp.value.trim(); save(); renderAll();
+}
+function clearExc(planId,key){
+  const p=state.plans.find(x=>x.id===planId); if(!p) return;
+  delete p.exceptions[key]; save(); renderAll();
+}
+function warnHTML(plan, w){
+  const lvName={warn:'⚠️ 提醒',err:'⛔ 冲突',good:'✅ 优势',info:'ℹ️ 建议'}[w.level];
+  const exc=plan.exceptions[w.key];
+  let html=`<div class="warnrow ${w.level==='err'?'err':w.level==='good'?'good':w.level==='info'?'info':''}">
+    <span class="badge ${w.level==='warn'?'b-warn':w.level==='err'?'b-err':w.level==='good'?'b-good':'b-info'}">${lvName}</span> ${esc(w.msg)}`;
+  if(w.level==='warn'||w.level==='err'){
+    if(exc){
+      html+=`<div class="excbox"><span class="badge b-exc">已登记例外</span> ${esc(exc)}
+        <button class="btn gray sm noprint" onclick="clearExc('${plan.id}','${w.key}')">撤销</button></div>`;
+    }else{
+      const eid='exc-'+plan.id+'-'+w.key.replace(/[:]/g,'_');
+      html+=`<div class="excbox noprint">例外原因：<input id="${eid}" placeholder="如：本区唯一向阳地块，将加强土壤消毒">
+        <button class="btn sm" onclick="saveExc('${plan.id}','${w.key}')">登记</button></div>`;
+    }
+  }
+  return html+'</div>';
+}
+function renderPlanList(){
+  const el=document.getElementById('planList');
+  if(!state.plans.length){ el.innerHTML='<span class="muted">暂无计划</span>'; return; }
+  let html='';
+  for(const p of state.plans){
+    const c=cropById(p.cropId), z=zoneById(p.zoneId), st=stagesOf(p);
+    if(!c||!z||!st) continue;
+    const warns=checkPlan(p);
+    const nBad=warns.filter(w=>w.level==='warn'&&!p.exceptions[w.key]).length;
+    const nErr=warns.filter(w=>w.level==='err'&&!p.exceptions[w.key]).length;
+    const stageTxt = st.direct
+      ? `直播 ${iso(st.sow)} → 采收 ${iso(st.hs)} ~ ${iso(st.he)}`
+      : `育苗 ${iso(st.sow)} → 移栽 ${iso(st.tp)} → 采收 ${iso(st.hs)} ~ ${iso(st.he)}`;
+    html+=`<div class="card" style="border-left:5px solid ${c.color};margin:10px 0">
+      <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px">
+        <div><b style="font-size:15px">${esc(z.name)} · ${c.name}</b>
+          <span class="muted">（${c.family} · ${z.w*z.h}㎡ · ${st.direct?'直播':'育苗移栽'}）</span>
+          ${nErr?`<span class="badge b-err">${nErr} 个冲突</span>`:''}
+          ${nBad?`<span class="badge b-warn">${nBad} 个提醒</span>`:''}
+          ${!nErr&&!nBad?'<span class="badge b-good">检查通过</span>':''}
+        </div>
+        <div class="noprint"><button class="btn danger sm" onclick="delPlan('${p.id}')">删除</button></div>
+      </div>
+      <div style="margin:6px 0">📆 ${stageTxt}</div>
+      <div class="noprint" style="margin:6px 0;font-size:12px">
+        日期调整：<input type="number" id="sh-${p.id}" style="width:64px" placeholder="±天数">
+        <select id="rs-${p.id}"><option>天气变化</option><option>人员不足</option><option>物资未到位</option><option>其他</option></select>
+        <button class="btn gray sm" onclick="shiftPlan('${p.id}')">应用（整体平移各阶段）</button>
+      </div>
+      ${p.log.map(l=>`<div class="logline">↳ ${l.when} 因「${l.reason}」${l.days>0?'顺延':'提前'}${Math.abs(l.days)}天</div>`).join('')}
+      ${warns.map(w=>warnHTML(p,w)).join('')}
+    </div>`;
+  }
+  el.innerHTML=html;
+}
+
+/* ==================== 输出 ==================== */
+function renderPlanMap(){
+  const {gridW,gridH,seasonName,seasonStart}=state.settings;
+  document.getElementById('seasonLabel').textContent = `（${seasonName||''} · 自 ${seasonStart||'?'} 起）`;
+  let inner='';
+  const used=new Map();
+  for(const z of state.zones){
+    const plan=state.plans.find(p=>p.zoneId===z.id);
+    const c=plan&&cropById(plan.cropId);
+    const fill=c?c.color:'#eceff1';
+    inner+=`<rect x="${z.x*CELL+1}" y="${z.y*CELL+1}" width="${z.w*CELL-2}" height="${z.h*CELL-2}" fill="${fill}" fill-opacity="0.6" stroke="#455a64" rx="4"/>
+      <text x="${z.x*CELL+6}" y="${z.y*CELL+16}" font-size="12" font-weight="600">${esc(z.name)}</text>`;
+    if(c){
+      const st=stagesOf(plan);
+      inner+=`<text x="${z.x*CELL+6}" y="${z.y*CELL+32}" font-size="13" font-weight="700" fill="#1b5e20">${esc(c.name)}</text>
+        <text x="${z.x*CELL+6}" y="${z.y*CELL+46}" font-size="10" fill="#37474f">采收 ${fmtC(st.hs)}起</text>`;
+      used.set(c.id,c);
+    }else{
+      inner+=`<text x="${z.x*CELL+6}" y="${z.y*CELL+32}" font-size="11" fill="#90a4ae">未安排</text>`;
+    }
+  }
+  document.getElementById('planMapWrap').innerHTML=zoneSVG(inner,gridW,gridH);
+  document.getElementById('planLegend').innerHTML=[...used.values()]
+    .map(c=>`<span class="tag" style="background:${c.color}">${c.name}</span>`).join('') || '<span class="muted">尚无种植计划</span>';
+}
+function buildTasks(){
+  const tasks=[];
+  for(const p of state.plans){
+    const c=cropById(p.cropId), z=zoneById(p.zoneId), st=stagesOf(p);
+    if(!c||!z||!st) continue;
+    const zn=z.name, area=z.w*z.h;
+    tasks.push({date:addD(occupyStart(p),-7), type:'整地', text:`${zn}：翻耕整地、施基肥（为${c.name}做准备）`});
+    if(st.direct){
+      tasks.push({date:st.sow, type:'播种', text:`${zn}：直播 ${c.name}（${area}㎡，约需 ${seedQty(p)}${c.unit}种子）`});
+    }else{
+      tasks.push({date:st.sow, type:'育苗', text:`育苗：${c.name} 播种育苗（供 ${zn} ${area}㎡，约需 ${seedQty(p)}${c.unit}种子）`});
+      tasks.push({date:st.tp, type:'移栽', text:`${zn}：移栽定植 ${c.name}`});
+    }
+    tasks.push({date:addD(st.direct?st.sow:st.tp,21), type:'管理', text:`${zn}：${c.name} 中耕除草、追肥`});
+    for(let t=st.hs, i=0; t<=st.he; t=addD(t,7), i++)
+      tasks.push({date:t, type:'采收', text:`${zn}：${c.name} ${i===0?'开始采收':'分批采收'}`});
+  }
+  return tasks;
+}
+function renderWeekly(){
+  const el=document.getElementById('weeklyTasks');
+  const tasks=buildTasks();
+  if(!tasks.length){ el.innerHTML='<span class="muted">暂无任务（请先制定种植计划）</span>'; return; }
+  const groups={};
+  for(const t of tasks){ const k=isoWeek(t.date); (groups[k]=groups[k]||[]).push(t); }
+  const keys=Object.keys(groups).sort();
+  const colors={整地:'#8d6e63',播种:'#2e7d32',育苗:'#00897b',移栽:'#1e88e5',管理:'#f9a825',采收:'#e53935'};
+  let html='<table><tr><th style="width:150px">周</th><th>任务</th></tr>';
+  for(const k of keys){
+    const mon=monday(groups[k][0].date);
+    html+=`<tr class="weekhead"><td>${k}<br><span class="muted" style="font-weight:400">${fmtC(mon)} 起</span></td><td>`+
+      groups[k].sort((a,b)=>a.date-b.date)
+        .map(t=>`<div><span class="tag" style="background:${colors[t.type]||'#607d8b'}">${t.type}</span>${esc(t.text)} <span class="muted">（${fmtC(t.date)}）</span></div>`)
+        .join('')+'</td></tr>';
+  }
+  el.innerHTML=html+'</table>';
+}
+function seedQty(p){
+  const c=cropById(p.cropId), z=zoneById(p.zoneId);
+  return Math.ceil(z.w*z.h*c.rate*1.15*10)/10;
+}
+function renderSeeds(){
+  const el=document.getElementById('seedList');
+  if(!state.plans.length){ el.innerHTML='<span class="muted">暂无计划</span>'; return; }
+  const agg={};
+  for(const p of state.plans){
+    const c=cropById(p.cropId), z=zoneById(p.zoneId), st=stagesOf(p);
+    if(!c||!z||!st) continue;
+    const a=agg[c.id]=agg[c.id]||{c, area:0, qty:0, zones:[], first:st.sow};
+    a.area+=z.w*z.h; a.qty+=seedQty(p); a.zones.push(z.name);
+    if(st.sow<a.first) a.first=st.sow;
+  }
+  const today=iso(new Date());
+  let html='<table><tr><th>作物</th><th>科属</th><th>种植方式</th><th>涉及种植区</th><th>总面积</th><th>建议采购量</th><th>最早播期</th><th>采购截止</th></tr>';
+  for(const k of Object.keys(agg)){
+    const a=agg[k], ddl=iso(addD(a.first,-14));
+    const late = ddl<=today;
+    html+=`<tr><td><span class="tag" style="background:${a.c.color}"> </span>${a.c.name}</td><td>${a.c.family}</td>
+      <td>${a.c.nursery>0?'育苗移栽':'直播'}</td><td>${a.zones.map(esc).join('、')}</td><td>${a.area}㎡</td>
+      <td><b>${Math.ceil(a.qty*10)/10} ${a.c.unit}</b></td><td>${iso(a.first)}</td>
+      <td style="${late?'color:#c62828;font-weight:600':''}">${ddl}${late?'（尽快采购）':''}</td></tr>`;
+  }
+  el.innerHTML=html+'</table>';
+}
+
+/* ==================== 备份 / 示例 ==================== */
+function exportJSON(){
+  const blob=new Blob([JSON.stringify(state,null,2)],{type:'application/json'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download='菜园轮作规划_'+iso(new Date())+'.json';
+  a.click();
+}
+function importJSON(inp){
+  const f=inp.files[0]; if(!f) return;
+  const r=new FileReader();
+  r.onload=()=>{ try{ state=JSON.parse(r.result); save(); renderAll(); alert('导入成功'); }
+    catch(e){ alert('文件格式错误'); } };
+  r.readAsText(f); inp.value='';
+}
+function clearAll(){
+  if(!confirm('清空全部数据（种植区、历史、计划）？建议先导出备份。')) return;
+  state=defaultState(); ui.selectedZone=null; save(); renderAll();
+}
+function loadSample(){
+  if(!confirm('载入示例数据将覆盖当前内容，继续？')) return;
+  state=defaultState();
+  const zA={id:'zA',name:'A区',x:0,y:0,w:8,h:6,sun:'全日照',soil:'壤土'};
+  const zB={id:'zB',name:'B区',x:8,y:0,w:8,h:6,sun:'全日照',soil:'沙壤土'};
+  const zC={id:'zC',name:'C区',x:0,y:6,w:8,h:8,sun:'半日照',soil:'黏土'};
+  const zD={id:'zD',name:'D区',x:8,y:6,w:8,h:8,sun:'全日照',soil:'壤土'};
+  state.zones=[zA,zB,zC,zD];
+  state.history=[
+    {id:uid(),zoneId:'zA',year:2026,season:'春',cropId:'tomato',fertilizer:'化肥(复合肥)',pestLevel:'中度',pest:'蚜虫'},
+    {id:uid(),zoneId:'zB',year:2026,season:'春',cropId:'cuke',fertilizer:'堆肥/农家肥',pestLevel:'轻度',pest:'霜霉病'},
+    {id:uid(),zoneId:'zC',year:2026,season:'春',cropId:'cabchina',fertilizer:'商品有机肥',pestLevel:'无',pest:'无'},
+    {id:uid(),zoneId:'zD',year:2026,season:'春',cropId:'bean',fertilizer:'堆肥/农家肥',pestLevel:'无',pest:'无'},
+  ];
+  state.plans=[
+    {id:uid(),zoneId:'zA',cropId:'lettuce',sowDate:'2026-09-20',exceptions:{},log:[]},
+    {id:uid(),zoneId:'zB',cropId:'zucchini',sowDate:'2026-09-15',exceptions:{},log:[]},
+    {id:uid(),zoneId:'zC',cropId:'spinach',sowDate:'2026-09-15',exceptions:{},log:[]},
+    {id:uid(),zoneId:'zD',cropId:'cabchina',sowDate:'2026-09-20',exceptions:{},log:[]},
+  ];
+  save(); renderAll();
+  alert('已载入示例：B区「西葫芦」会触发连作提醒（上季为黄瓜，同属葫芦科），可在计划页登记例外原因。');
+}
+
+/* ==================== 总渲染 ==================== */
+function renderAll(){
+  document.getElementById('gridW').value=state.settings.gridW;
+  document.getElementById('gridH').value=state.settings.gridH;
+  document.getElementById('seasonName').value=state.settings.seasonName||'';
+  document.getElementById('seasonStart').value=state.settings.seasonStart||'';
+  renderZoneMap(); renderZoneEdit(); renderZoneList();
+  renderHistForm(); renderHistList();
+  renderPlanForm(); renderPlanList();
+  renderPlanMap(); renderWeekly(); renderSeeds();
+}
+renderAll();
+</script>
+</body>
+</html>
