@@ -247,6 +247,11 @@ function stagesOf(plan){
 }
 function occupyStart(plan){ const s=stagesOf(plan); return s.direct ? s.sow : s.tp; }
 function overlap(a1,a2,b1,b2){ return a1<=b2 && b1<=a2; }
+/* 某种植区的全部计划，按占地时间先后排序（支持同区接茬多茬） */
+function plansOfZone(zid){
+  return state.plans.filter(p=>p.zoneId===zid && cropById(p.cropId))
+    .sort((a,b)=>occupyStart(a)-occupyStart(b));
+}
 
 /* ==================== 规则引擎 ==================== */
 function checkPlan(plan){
@@ -331,14 +336,17 @@ function renderZoneMap(){
   const {gridW,gridH} = state.settings;
   let inner='';
   for(const z of state.zones){
-    const plan = state.plans.find(p=>p.zoneId===z.id);
-    const c = plan && cropById(plan.cropId);
-    const fill = c ? c.color : '#eceff1';
+    const plans = plansOfZone(z.id);
+    const c0 = plans.length ? cropById(plans[0].cropId) : null;
+    const fill = c0 ? c0.color : '#eceff1';
     inner += `<rect class="zone-rect ${ui.selectedZone===z.id?'sel':''}" data-zid="${z.id}"
       x="${z.x*CELL+1}" y="${z.y*CELL+1}" width="${z.w*CELL-2}" height="${z.h*CELL-2}" fill="${fill}" fill-opacity="0.55" rx="4"/>
       <text x="${z.x*CELL+6}" y="${z.y*CELL+16}" font-size="12" font-weight="600">${esc(z.name)}</text>
       <text x="${z.x*CELL+6}" y="${z.y*CELL+30}" font-size="10" fill="#546e7a">${z.w*z.h}㎡ · ${z.sun} · ${z.soil}</text>`;
-    if(c) inner += `<text x="${z.x*CELL+6}" y="${z.y*CELL+46}" font-size="12" font-weight="600" fill="#1b5e20">${esc(c.name)}</text>`;
+    if(plans.length){
+      const names = plans.map(p=>cropById(p.cropId).name).join('→');
+      inner += `<text x="${z.x*CELL+6}" y="${z.y*CELL+46}" font-size="12" font-weight="600" fill="#1b5e20">${esc(names)}</text>`;
+    }
   }
   if(ui.drawing){
     const r=ui.drawing;
@@ -579,19 +587,28 @@ function renderPlanMap(){
   let inner='';
   const used=new Map();
   for(const z of state.zones){
-    const plan=state.plans.find(p=>p.zoneId===z.id);
-    const c=plan&&cropById(plan.cropId);
-    const fill=c?c.color:'#eceff1';
-    inner+=`<rect x="${z.x*CELL+1}" y="${z.y*CELL+1}" width="${z.w*CELL-2}" height="${z.h*CELL-2}" fill="${fill}" fill-opacity="0.6" stroke="#455a64" rx="4"/>
-      <text x="${z.x*CELL+6}" y="${z.y*CELL+16}" font-size="12" font-weight="600">${esc(z.name)}</text>`;
-    if(c){
-      const st=stagesOf(plan);
-      inner+=`<text x="${z.x*CELL+6}" y="${z.y*CELL+32}" font-size="13" font-weight="700" fill="#1b5e20">${esc(c.name)}</text>
-        <text x="${z.x*CELL+6}" y="${z.y*CELL+46}" font-size="10" fill="#37474f">采收 ${fmtC(st.hs)}起</text>`;
-      used.set(c.id,c);
-    }else{
-      inner+=`<text x="${z.x*CELL+6}" y="${z.y*CELL+32}" font-size="11" fill="#90a4ae">未安排</text>`;
+    const px=z.x*CELL+1, py=z.y*CELL+1, pw=z.w*CELL-2, ph=z.h*CELL-2;
+    const plans=plansOfZone(z.id);
+    if(!plans.length){
+      inner+=`<rect x="${px}" y="${py}" width="${pw}" height="${ph}" fill="#eceff1" fill-opacity="0.6" stroke="#455a64" rx="4"/>
+        <text x="${px+5}" y="${py+15}" font-size="12" font-weight="600">${esc(z.name)}</text>
+        <text x="${px+5}" y="${py+31}" font-size="11" fill="#90a4ae">未安排</text>`;
+      continue;
     }
+    // 同区多茬：按占地先后自上而下分成色带，每茬一条
+    const sh=ph/plans.length;
+    inner+=`<clipPath id="zc-${z.id}"><rect x="${px}" y="${py}" width="${pw}" height="${ph}" rx="4"/></clipPath><g clip-path="url(#zc-${z.id})">`;
+    plans.forEach((p,i)=>{
+      const c=cropById(p.cropId);
+      used.set(c.id,c);
+      inner+=`<rect x="${px}" y="${py+i*sh}" width="${pw}" height="${sh}" fill="${c.color}" fill-opacity="0.6"/>`;
+    });
+    inner+=`</g><rect x="${px}" y="${py}" width="${pw}" height="${ph}" fill="none" stroke="#455a64" rx="4"/>`;
+    inner+=`<text x="${px+5}" y="${py+15}" font-size="12" font-weight="600" style="paint-order:stroke" stroke="#fff" stroke-width="3">${esc(z.name)}</text>`;
+    plans.forEach((p,i)=>{
+      const c=cropById(p.cropId), st=stagesOf(p);
+      inner+=`<text x="${px+5}" y="${py+30+i*14}" font-size="11" fill="#263238" style="paint-order:stroke" stroke="#fff" stroke-width="3">${esc(c.name)} · 采收${fmtC(st.hs)}起</text>`;
+    });
   }
   document.getElementById('planMapWrap').innerHTML=zoneSVG(inner,gridW,gridH);
   document.getElementById('planLegend').innerHTML=[...used.values()]
