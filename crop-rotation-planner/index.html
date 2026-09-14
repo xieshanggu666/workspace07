@@ -208,9 +208,88 @@ function defaultState(){
   return { settings:{seasonName:'秋季', seasonStart:'2026-09-15', gridW:24, gridH:14},
            zones:[], history:[], plans:[] };
 }
-let state;
-try{ state = JSON.parse(localStorage.getItem('crp_state')) || defaultState(); }
-catch(e){ state = defaultState(); }
+/* ==================== 备份校验与规范化 ====================
+ * validateBackup: 只检查，不修改；返回错误信息数组（空 = 通过）
+ * normalizeBackup: 校验通过后调用，补默认值、把越界地块收进网格
+ * 原则：任何一步失败都不触碰当前 state 与 localStorage
+ */
+function validateBackup(o){
+  const isObj=v=>v&&typeof v==='object'&&!Array.isArray(v);
+  const isStr=v=>typeof v==='string';
+  const isNum=v=>typeof v==='number'&&isFinite(v);
+  if(!isObj(o)) return ['文件内容不是规划数据对象'];
+  const errs=[];
+  const s=o.settings;
+  if(!isObj(s)) errs.push('缺少 settings（季节与网格设置）');
+  else if(!isNum(s.gridW)||!isNum(s.gridH)||s.gridW<5||s.gridW>60||s.gridH<5||s.gridH>60)
+    errs.push('settings.gridW/gridH 缺失或超出 5~60 范围');
+  if(!Array.isArray(o.zones)) errs.push('缺少 zones（种植区数组）');
+  if(!Array.isArray(o.history)) errs.push('缺少 history（历史记录数组）');
+  if(!Array.isArray(o.plans)) errs.push('缺少 plans（种植计划数组）');
+  if(errs.length) return errs; // 顶层结构缺失则不再逐项检查
+  const zids=new Set();
+  o.zones.forEach((z,i)=>{
+    const tag=`zones[${i}]（${isObj(z)&&isStr(z.name)?z.name:'?'}）`;
+    if(!isObj(z)||!isStr(z.id)||!isStr(z.name)){ errs.push(tag+' 缺少 id 或 name'); return; }
+    if(zids.has(z.id)) errs.push(`种植区 id 重复：${z.id}`);
+    zids.add(z.id);
+    if(!['x','y','w','h'].every(k=>isNum(z[k]))) errs.push(tag+' 坐标/尺寸必须是数字');
+    if(!SUNS.includes(z.sun)) errs.push(tag+' 日照取值无效');
+    if(!SOILS.includes(z.soil)) errs.push(tag+' 土壤取值无效');
+  });
+  o.history.forEach((h,i)=>{
+    if(!isObj(h)||!isStr(h.zoneId)||!isStr(h.cropId)){ errs.push(`history[${i}] 缺少 zoneId 或 cropId`); return; }
+    if(!zids.has(h.zoneId)) errs.push(`history[${i}] 引用了不存在的种植区 ${h.zoneId}`);
+    if(!isNum(h.year)) errs.push(`history[${i}] 年份无效`);
+    if(!SEASONS.includes(h.season)) errs.push(`history[${i}] 季节取值无效`);
+    if(!FERTS.includes(h.fertilizer)) errs.push(`history[${i}] 施肥方式取值无效`);
+    if(!PEST_LV.includes(h.pestLevel)) errs.push(`history[${i}] 病虫害程度取值无效`);
+  });
+  o.plans.forEach((p,i)=>{
+    if(!isObj(p)||!isStr(p.zoneId)||!isStr(p.cropId)){ errs.push(`plans[${i}] 缺少 zoneId 或 cropId`); return; }
+    if(!zids.has(p.zoneId)) errs.push(`plans[${i}] 引用了不存在的种植区 ${p.zoneId}`);
+    if(!isStr(p.sowDate)||isNaN(d(p.sowDate))) errs.push(`plans[${i}] 播种日期无效`);
+  });
+  return errs;
+}
+function normalizeBackup(o){
+  const isObj=v=>v&&typeof v==='object'&&!Array.isArray(v);
+  const s={
+    settings:{
+      seasonName: typeof o.settings.seasonName==='string'?o.settings.seasonName:'',
+      seasonStart: /^\d{4}-\d{2}-\d{2}$/.test(o.settings.seasonStart||'')?o.settings.seasonStart:iso(new Date()),
+      gridW:o.settings.gridW|0, gridH:o.settings.gridH|0,
+    },
+    zones:o.zones.map(z=>({id:z.id, name:z.name, x:z.x|0, y:z.y|0,
+      w:Math.max(1,z.w|0), h:Math.max(1,z.h|0), sun:z.sun, soil:z.soil})),
+    history:o.history.map(h=>({id:typeof h.id==='string'?h.id:uid(), zoneId:h.zoneId,
+      year:h.year|0, season:h.season, cropId:h.cropId, fertilizer:h.fertilizer,
+      pestLevel:h.pestLevel, pest:PESTS.includes(h.pest)?h.pest:'其他'})),
+    plans:o.plans.map(p=>({id:typeof p.id==='string'?p.id:uid(), zoneId:p.zoneId,
+      cropId:p.cropId, sowDate:p.sowDate,
+      exceptions:isObj(p.exceptions)?p.exceptions:{}, log:Array.isArray(p.log)?p.log:[]})),
+  };
+  // 越界地块收进网格（与 setGrid 同一规则：先限尺寸，再限位置）
+  for(const z of s.zones){
+    z.w=Math.min(z.w,s.settings.gridW); z.h=Math.min(z.h,s.settings.gridH);
+    z.x=Math.max(0,Math.min(z.x,s.settings.gridW-z.w));
+    z.y=Math.max(0,Math.min(z.y,s.settings.gridH-z.y));
+  }
+  return s;
+}
+/* 启动加载：本地数据损坏时回退到空状态，损坏内容另存备份键，不直接丢弃 */
+function loadInitialState(){
+  let raw=null;
+  try{
+    raw=localStorage.getItem('crp_state');
+    if(!raw) return defaultState();
+    const parsed=JSON.parse(raw);
+    if(validateBackup(parsed).length===0) return normalizeBackup(parsed);
+  }catch(e){ /* 落入下方：按损坏处理 */ }
+  if(raw){ try{ localStorage.setItem('crp_state_corrupt_'+Date.now(), raw); }catch(e){} }
+  return defaultState();
+}
+let state = loadInitialState();
 let ui = { selectedZone:null, drawing:null };
 
 function save(){ localStorage.setItem('crp_state', JSON.stringify(state)); }
@@ -690,9 +769,33 @@ function exportJSON(){
 function importJSON(inp){
   const f=inp.files[0]; if(!f) return;
   const r=new FileReader();
-  r.onload=()=>{ try{ state=JSON.parse(r.result); save(); renderAll(); alert('导入成功'); }
-    catch(e){ alert('文件格式错误'); } };
+  r.onload=()=>importData(r.result);
   r.readAsText(f); inp.value='';
+}
+/* 导入备份：先校验 → 再规范化 → 渲染成功后才保存；任一步失败都不动当前数据 */
+function importData(text){
+  let data;
+  try{ data=JSON.parse(text); }
+  catch(e){ alert('导入失败：文件不是有效的 JSON。当前数据未被修改。'); return false; }
+  const errs=validateBackup(data);
+  if(errs.length){
+    alert('导入失败，备份结构不完整或取值无效（当前数据未被修改）：\n\n'+
+      errs.slice(0,8).join('\n')+(errs.length>8?`\n…另有 ${errs.length-8} 处问题`:''));
+    return false;
+  }
+  const prev=state;
+  try{
+    state=normalizeBackup(data);
+    ui.selectedZone=null;
+    renderAll();   // 先确认能正常渲染
+    save();        // 再持久化，避免把坏数据写进 localStorage
+    alert('导入成功');
+    return true;
+  }catch(e){
+    state=prev; renderAll();
+    alert('导入失败：'+(e&&e.message||e)+'，已恢复原有数据。');
+    return false;
+  }
 }
 function clearAll(){
   if(!confirm('清空全部数据（种植区、历史、计划）？建议先导出备份。')) return;
